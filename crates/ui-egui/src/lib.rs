@@ -476,8 +476,8 @@ pub struct PdfCraftApp {
     pub initials: Option<fill_sign::SavedSig>,
     /// The Create signature / initials dialog, and its typed preview.
     pub signature_draft: fill_sign::SigDraft,
-    pub(crate) signature_preview: Option<(String, egui::TextureHandle)>,
-    pub(crate) saved_signature_previews: [Option<(String, egui::TextureHandle)>; 2],
+    pub(crate) signature_preview: fill_sign::Preview,
+    pub(crate) saved_signature_previews: [fill_sign::Preview; 2],
     /// The Comment Properties dialog's state.
     pub comment_props: Option<comment_props::PropsDraft>,
     pub field_props: Option<prepare::FieldDraft>,
@@ -1047,6 +1047,8 @@ impl PdfCraftApp {
             // Drawn signatures keep their original form (older settings read the same).
             "signature": match &self.signature { Some(fill_sign::SavedSig::Drawn(s)) => Some(s), _ => None },
             "signature_text": match &self.signature { Some(fill_sign::SavedSig::Typed(t)) => Some(t), _ => None },
+            // An uploaded picture has its own key, so older versions still read the others.
+            "signature_image": match &self.signature { Some(s @ fill_sign::SavedSig::Image(_)) => Some(s), _ => None },
             "initials": self.initials,
             // Keychain identities are read from macOS each time.
             "digital_ids": self.digital_ids.iter().filter(|e| !e.path.starts_with("keychain:")).collect::<Vec<_>>(),
@@ -1095,7 +1097,12 @@ impl PdfCraftApp {
         if let Some(t) = v["signature_text"].as_str().filter(|t| !t.trim().is_empty()) {
             self.signature = Some(fill_sign::SavedSig::Typed(t.to_string()));
         }
-        if let Ok(i) = serde_json::from_value::<fill_sign::SavedSig>(v["initials"].clone()) {
+        if let Ok(s @ fill_sign::SavedSig::Image(_)) = serde_json::from_value::<fill_sign::SavedSig>(v["signature_image"].clone())
+            && let Some(s) = s.validated()
+        {
+            self.signature = Some(s);
+        }
+        if let Some(i) = serde_json::from_value::<fill_sign::SavedSig>(v["initials"].clone()).ok().and_then(fill_sign::SavedSig::validated) {
             self.initials = Some(i);
         }
         if let Ok(ids) = serde_json::from_value::<Vec<DigitalIdEntry>>(v["digital_ids"].clone()) {

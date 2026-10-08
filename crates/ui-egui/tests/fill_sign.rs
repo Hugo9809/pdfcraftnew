@@ -276,3 +276,178 @@ fn long_typed_names_fit_the_placed_signature_and_keep_every_outline() {
     let a = &s.session.get(s.views[0].id).unwrap().info.annotations[0];
     assert!(a.rect[2] <= 190.001, "the full name fits on the page: {:?}", a.rect);
 }
+
+/// A PNG `w`×`h` px: black ink on a transparent background.
+fn ink_png(w: u32, h: u32) -> Vec<u8> {
+    let img = image::RgbaImage::from_fn(w, h, |x, y| if (x + y) % 7 == 0 { image::Rgba([0, 0, 0, 255]) } else { image::Rgba([0, 0, 0, 0]) });
+    let mut png = Vec::new();
+    img.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+    png
+}
+
+fn stamps(h: &Harness<'static, PdfCraftApp>) -> Vec<[f32; 4]> {
+    let s = h.state();
+    s.session.get(s.views[0].id).unwrap().info.annotations.iter().filter(|a| a.subtype == "Stamp").map(|a| a.rect).collect()
+}
+
+#[test]
+fn uploading_pictures_as_signature_and_initials() {
+    let mut h = harness();
+    let dir = std::env::temp_dir().join(format!("pdfcraft-sig-upload-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("my signature.png");
+    std::fs::write(&file, ink_png(300, 100)).unwrap();
+
+    assert!(h.state_mut().execute("sign.fill.signature"));
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(Dialog::Signature));
+    h.get_all_by_label("Upload").last().unwrap().click();
+    h.run_steps(2);
+    assert!(h.state().signature_draft.uploading);
+    h.get_by_label("No image chosen");
+    // Apply waits for a picture.
+    h.get_by_label("Apply").click();
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(Dialog::Signature));
+    // Choose image… asks for a file (answered by the test hook); the dialog and its draft stay.
+    h.state_mut().save_override = Some(file.to_string_lossy().into_owned());
+    h.get_by_label("Choose image…").click();
+    h.run_steps(3);
+    h.state_mut().save_override = None;
+    assert_eq!(h.state().dialog, Some(Dialog::Signature));
+    let img = h.state().signature_draft.image.clone().expect("the picture is loaded");
+    assert_eq!((img.file.as_str(), img.size), ("my signature.png", (300, 100)));
+    h.get_by_label("my signature.png");
+    h.get_by_label("Apply").click();
+    h.run_steps(3);
+    assert_eq!(h.state().dialog, None);
+    assert_eq!(h.state().signature, Some(SavedSig::Image(img.clone())));
+    assert_eq!(h.state().quick_tool, QuickTool::Fill(FillTool::Signature));
+
+    // Placed like a drawn signature: left edge at the click, vertically centred, within 150×40 pt.
+    click(&mut h, 60.0, 100.0);
+    let placed = stamps(&h);
+    assert_eq!(placed.len(), 1, "an image stamp: {:?}", items(&h));
+    let r = placed[0];
+    let (w, ht) = (r[2] - r[0], r[3] - r[1]);
+    assert!((w - 120.0).abs() < 1.5 && (ht - 40.0).abs() < 1.5, "300×100 px fits 120×40 pt: {r:?}");
+    assert!((r[0] - 60.0).abs() < 2.0 && ((r[1] + r[3]) / 2.0 - 100.0).abs() < 2.0, "anchored at the click: {r:?}");
+    // The picture keeps its transparency (a soft mask), and the stamp undoes like any comment.
+    let s = h.state();
+    let bytes = s.session.save_bytes(s.views[0].id).unwrap();
+    assert!(bytes.windows(6).any(|w| w == b"/SMask"), "PNG alpha is kept");
+    assert!(h.state_mut().execute("edit.undo"));
+    h.run_steps(2);
+    assert!(stamps(&h).is_empty());
+
+    // Initials: a square picture, at most 24 pt tall.
+    assert!(h.state_mut().execute("sign.fill.initials"));
+    h.run_steps(2);
+    h.get_by_label("Create initials");
+    h.get_all_by_label("Upload").last().unwrap().click();
+    h.run_steps(1);
+    h.state_mut().use_signature_image("initials.png".into(), ink_png(80, 80));
+    h.run_steps(2);
+    h.get_by_label("Apply").click();
+    h.run_steps(3);
+    assert!(matches!(h.state().initials, Some(SavedSig::Image(ref i)) if i.size == (80, 80)));
+    click(&mut h, 60.0, 200.0);
+    let r = stamps(&h)[0];
+    assert!(((r[2] - r[0]) - 24.0).abs() < 1.0 && ((r[3] - r[1]) - 24.0).abs() < 1.0, "{r:?}");
+
+    // The saved previews show both, and both survive a restart.
+    h.state_mut().left = pdfcraft_ui_egui::LeftPanel::Tool("fill_sign");
+    h.state_mut().left_open = true;
+    h.run_steps(3);
+    h.get_by_label("Use signature");
+    h.get_by_label("Use initials");
+    let saved = h.state().persist();
+    let mut again = PdfCraftApp::new();
+    again.restore(&saved);
+    assert_eq!(again.signature, h.state().signature);
+    assert_eq!(again.initials, h.state().initials);
+
+    // Changing an uploaded signature opens on Upload with the picture loaded.
+    assert!(h.state_mut().execute("sign.fill.signature.change"));
+    h.run_steps(2);
+    assert!(h.state().signature_draft.uploading);
+    assert_eq!(h.state().signature_draft.image, Some(img));
+    h.get_by_label("Cancel").click();
+    h.run_steps(2);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn oversize_and_non_picture_files_are_refused() {
+    let mut h = harness();
+    assert!(h.state_mut().execute("sign.fill.signature"));
+    h.run_steps(2);
+    h.get_all_by_label("Upload").last().unwrap().click();
+    h.run_steps(1);
+    let mut big = ink_png(10, 10);
+    big.resize(pdfcraft_ui_egui::fill_sign::MAX_SIGNATURE_IMAGE_BYTES + 1, 0);
+    h.state_mut().use_signature_image("huge.png".into(), big);
+    assert!(h.state().signature_draft.image.is_none());
+    assert!(h.state().toast.as_ref().is_some_and(|(t, _)| t.contains("too large")), "{:?}", h.state().toast);
+    for (name, bytes) in [("notes.png", b"hello, not a picture".to_vec()), ("doc.png", FIXTURE.to_vec()), ("cut.png", ink_png(40, 40)[..60].to_vec())]
+    {
+        h.state_mut().toast = None;
+        h.state_mut().use_signature_image(name.into(), bytes);
+        assert!(h.state().signature_draft.image.is_none(), "{name}");
+        assert!(h.state().toast.as_ref().is_some_and(|(t, _)| t.contains(name)), "{name}: {:?}", h.state().toast);
+    }
+    h.run_steps(2);
+    assert_eq!(h.state().dialog, Some(Dialog::Signature), "the dialog stays open to choose again");
+}
+
+#[test]
+fn malformed_signature_settings_are_ignored() {
+    use base64::Engine as _;
+    let b64 = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+    let good = b64(&ink_png(30, 10));
+    let not_image = b64(b"plain text");
+    let huge = b64(&vec![0u8; pdfcraft_ui_egui::fill_sign::MAX_SIGNATURE_IMAGE_BYTES + 1]);
+    for bad in [
+        r#"{"signature_image": "nonsense", "initials": 7}"#.to_string(),
+        r#"{"signature_image": {"Image": {"file": "a.png", "data": "!!!", "size": [1, 1]}}}"#.to_string(),
+        format!(
+            r#"{{"signature_image": {{"Image": {{"file": "a.png", "data": "{not_image}", "size": [5, 5]}}}}, "initials": {{"Image": {{"file": "b.png", "data": "{huge}", "size": [1, 1]}}}}}}"#
+        ),
+        format!(r#"{{"signature_image": {{"Typed": "smuggled"}}, "initials": {{"Image": {{"file": "b.png", "data": "{good}"}}}}}}"#),
+        r#"{"initials": {"Drawn": [[[1e999, 0]]]}}"#.to_string(),
+    ] {
+        let mut app = PdfCraftApp::new();
+        app.restore(&bad);
+        assert_eq!((app.signature.clone(), app.initials.clone()), (None, None), "{bad}");
+    }
+    // A stored size is not trusted: the picture's real size is used.
+    let mut app = PdfCraftApp::new();
+    app.restore(&format!(r#"{{"signature_image": {{"Image": {{"file": "a.png", "data": "{good}", "size": [9999, 1]}}}}}}"#));
+    assert!(matches!(app.signature, Some(SavedSig::Image(ref i)) if i.size == (30, 10)), "{:?}", app.signature.is_some());
+    // Settings written before pictures still load.
+    let mut old = PdfCraftApp::new();
+    old.restore(r#"{"signature_text": "Ada Lovelace", "initials": {"Typed": "AL"}}"#);
+    assert_eq!(old.signature, Some(SavedSig::Typed("Ada Lovelace".into())));
+    assert_eq!(old.initials, Some(SavedSig::Typed("AL".into())));
+    let mut old = PdfCraftApp::new();
+    old.restore(r#"{"signature": [[[0.1, 0.1], [0.5, 0.2]]], "initials": {"Drawn": [[[0.1, 0.1], [0.2, 0.2]]]}}"#);
+    assert!(matches!(old.signature, Some(SavedSig::Drawn(_))) && matches!(old.initials, Some(SavedSig::Drawn(_))));
+}
+
+#[test]
+fn placed_pictures_keep_their_aspect_ratio() {
+    let img = |w, h| pdfcraft_ui_egui::fill_sign::SigImage { file: "s.png".into(), data: std::sync::Arc::new(ink_png(w, h)), size: (w, h) };
+    for ((w, h), initials, want) in
+        [((600, 100), false, (150.0, 25.0)), ((100, 100), false, (40.0, 40.0)), ((200, 100), true, (48.0, 24.0)), ((1000, 50), true, (75.0, 3.75))]
+    {
+        let sig = SavedSig::Image(img(w, h));
+        let Some(pdfcraft_engine::Edit::AddCustomStamp { rect, .. }) = pdfcraft_ui_egui::fill_sign::place(0, [10.0, 100.0], &sig, initials, "")
+        else {
+            panic!("an image stamp")
+        };
+        assert!(((rect[2] - rect[0]) - want.0).abs() < 1e-6 && ((rect[3] - rect[1]) - want.1).abs() < 1e-6, "{w}×{h}: {rect:?}");
+        assert!((rect[0] - 10.0).abs() < 1e-9 && ((rect[1] + rect[3]) / 2.0 - 100.0).abs() < 1e-9);
+    }
+    let zero = SavedSig::Image(pdfcraft_ui_egui::fill_sign::SigImage { size: (0, 5), ..img(1, 1) });
+    assert!(pdfcraft_ui_egui::fill_sign::place(0, [10.0, 100.0], &zero, false, "").is_none());
+}

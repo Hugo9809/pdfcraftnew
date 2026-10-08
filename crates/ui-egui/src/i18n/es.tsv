@@ -1718,6 +1718,13 @@
 	{dpi} pixels/inch	{dpi} píxeles/pulgada
 	Type your {what}.	Escribe tu {what}.
 	Draw your {what} below.	Dibuja tu {what} abajo.
+	Upload	Subir
+	Choose a picture of your {what}. A PNG with a transparent background works best.	Elige una imagen de tu {what}. Lo mejor es un PNG con fondo transparente.
+	Choose image…	Elegir imagen…
+	No image chosen	No se ha elegido ninguna imagen
+	Uploading a signature picture arrives on the web with file pickers for images	Subir una imagen de firma llegará a la versión web con los selectores de archivos de imagen
+	{file} is too large for a signature (at most {n} MB)	{file} es demasiado grande para una firma (como máximo {n} MB)
+	{file} isn't a picture PdfCraft can use. Choose a PNG, JPEG, GIF, BMP or TIFF image.	{file} no es una imagen que PdfCraft pueda usar. Elige una imagen PNG, JPEG, GIF, BMP o TIFF.
 	Your name	Tu nombre
 	Images and text (converted to PDF)	Imágenes y texto (convertidos a PDF)
 	Images and text	Imágenes y texto

@@ -25,7 +25,7 @@ pub struct CustomStamp {
     pub data: Arc<Vec<u8>>,
 }
 
-mod b64 {
+pub(crate) mod b64 {
     use std::sync::Arc;
 
     use base64::Engine as _;

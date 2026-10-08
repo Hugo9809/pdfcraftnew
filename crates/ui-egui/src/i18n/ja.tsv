@@ -1724,6 +1724,13 @@
 	{dpi} pixels/inch	{dpi} ピクセル/インチ
 	Type your {what}.	{what}を入力してください。
 	Draw your {what} below.	下に{what}を描いてください。
+	Upload	アップロード
+	Choose a picture of your {what}. A PNG with a transparent background works best.	{what}の画像を選んでください。背景が透明な PNG が最適です。
+	Choose image…	画像を選択…
+	No image chosen	画像が選択されていません
+	Uploading a signature picture arrives on the web with file pickers for images	Web 版で署名画像をアップロードするには、画像ファイル選択への対応が必要です
+	{file} is too large for a signature (at most {n} MB)	{file} は署名の上限（{n} MB）を超えています
+	{file} isn't a picture PdfCraft can use. Choose a PNG, JPEG, GIF, BMP or TIFF image.	{file} は PdfCraft で使える画像ではありません。PNG、JPEG、GIF、BMP、TIFF のいずれかを選んでください。
 	Your name	お名前
 	Images and text (converted to PDF)	画像とテキスト（PDF に変換）
 	Images and text	画像とテキスト

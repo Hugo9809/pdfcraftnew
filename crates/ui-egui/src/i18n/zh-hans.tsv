@@ -1754,6 +1754,13 @@
 	Diamond	菱形
 	Double-click	双击
 	Draw your {what} below.	请在下方绘制您的{what}。
+	Upload	上传
+	Choose a picture of your {what}. A PNG with a transparent background works best.	请选择您的{what}图像。最好使用透明背景的 PNG。
+	Choose image…	选择图像…
+	No image chosen	未选择图像
+	Uploading a signature picture arrives on the web with file pickers for images	Web 端上传签名图像将使用图像文件选择器
+	{file} is too large for a signature (at most {n} MB)	{file} 对于签名来说太大了（最大 {n} MB）
+	{file} isn't a picture PdfCraft can use. Choose a PNG, JPEG, GIF, BMP or TIFF image.	{file} 不是 PdfCraft 可用的图像。请选择 PNG、JPEG、GIF、BMP 或 TIFF 图像。
 	Duplicate page	复制页面
 	e.g. en-US	例如 en-US
 	Edit comment	编辑注释

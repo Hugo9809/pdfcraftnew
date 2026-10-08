@@ -1717,6 +1717,13 @@
 	{dpi} pixels/inch	每英吋 {dpi} 像素
 	Type your {what}.	輸入您的{what}。
 	Draw your {what} below.	在下方繪製您的{what}。
+	Upload	上傳
+	Choose a picture of your {what}. A PNG with a transparent background works best.	請選擇您的{what}圖片。最好使用透明背景的 PNG。
+	Choose image…	選擇圖片…
+	No image chosen	未選擇圖片
+	Uploading a signature picture arrives on the web with file pickers for images	Web 端上傳簽名圖片將使用圖片檔案選擇器
+	{file} is too large for a signature (at most {n} MB)	{file} 對於簽名來說太大了（最大 {n} MB）
+	{file} isn't a picture PdfCraft can use. Choose a PNG, JPEG, GIF, BMP or TIFF image.	{file} 不是 PdfCraft 可用的圖片。請選擇 PNG、JPEG、GIF、BMP 或 TIFF 圖片。
 	Your name	您的姓名
 	Images and text (converted to PDF)	圖片與文字（轉換為 PDF）
 	Images and text	圖片與文字
