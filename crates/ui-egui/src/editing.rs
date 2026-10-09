@@ -50,10 +50,11 @@ impl PdfCraftApp {
                     }
                     Edit::InsertBlankPage { at, .. } => view.select_pages(&[at.min(info.pages.len() - 1)]),
                     Edit::DeletePages { .. } => view.select_pages(&[]),
-                    Edit::AddAnnotation(a) => {
-                        // Select the new comment (appended last among the page's comments).
-                        let newest = info.annotations.iter().filter(|x| x.page == a.page && x.in_reply_to.is_none()).map(|x| x.index).max();
-                        view.comments.selected = newest.map(|n| (a.page, n));
+                    Edit::AddAnnotation(pdfcraft_engine::NewAnnotation { page, .. }) | Edit::AddCustomStamp { page, .. } => {
+                        // Select the new comment (appended last among the page's comments), so it
+                        // can be moved or resized straight away.
+                        let newest = info.annotations.iter().filter(|x| x.page == page && x.in_reply_to.is_none()).map(|x| x.index).max();
+                        view.comments.selected = newest.map(|n| (page, n));
                         view.comments.reveal = true;
                     }
                     Edit::DeleteAnnotation { .. } => view.comments.selected = None,
@@ -378,6 +379,7 @@ impl PdfCraftApp {
 fn comment_page(edit: &Edit) -> Option<usize> {
     match edit {
         Edit::AddAnnotation(a) => Some(a.page),
+        Edit::AddCustomStamp { page, .. } => Some(*page),
         Edit::DeleteAnnotation { page, .. }
         | Edit::SetAnnotationContents { page, .. }
         | Edit::ReplyToAnnotation { page, .. }

@@ -486,10 +486,38 @@ fn is_markup(subtype: &str) -> bool {
 /// Rectangles, ovals and text boxes. A callout's `/Rect` also holds its leader line, so it
 /// only moves.
 fn resizable(a: &Annotation) -> bool {
-    matches!(a.subtype.as_str(), "Square" | "Circle" | "FreeText") && a.intent.as_deref() != Some("FreeTextCallout")
+    matches!(a.subtype.as_str(), "Square" | "Circle" | "FreeText" | "Stamp") && a.intent.as_deref() != Some("FreeTextCallout")
+}
+
+/// Stamps (pictures, signatures) resize from their corners only and keep their aspect ratio.
+fn keeps_aspect(a: &Annotation) -> bool {
+    a.subtype == "Stamp"
 }
 
 const HANDLES: [(i8, i8); 8] = [(-1, -1), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0)];
+
+/// The handles a selected comment shows.
+fn handles(a: &Annotation) -> impl Iterator<Item = (i8, i8)> {
+    let corners_only = keeps_aspect(a);
+    HANDLES.into_iter().filter(move |(hx, hy)| !corners_only || (*hx != 0 && *hy != 0))
+}
+
+/// `r` resized by dragging `handle` by `d`, keeping the aspect ratio when the comment needs it.
+fn resized_for(a: &Annotation, r: Rect, handle: (i8, i8), d: egui::Vec2) -> Rect {
+    if !keeps_aspect(a) || handle.0 == 0 || handle.1 == 0 || r.width() < 1.0 || r.height() < 1.0 {
+        return resized(r, handle, d);
+    }
+    // The opposite corner stays put; the scale follows whichever side changed more (growing or
+    // shrinking).
+    let anchor = handle_pos(r, (-handle.0, -handle.1));
+    let target = handle_pos(r, handle) + d;
+    let (kx, ky) = ((target.x - anchor.x).abs() / r.width(), (target.y - anchor.y).abs() / r.height());
+    let k = if (kx - 1.0).abs() >= (ky - 1.0).abs() { kx } else { ky };
+    let k = if k.is_finite() { k.max(0.05) } else { 1.0 };
+    let size = egui::vec2(r.width() * k, r.height() * k);
+    let corner = anchor + egui::vec2(f32::from(handle.0) * size.x, f32::from(handle.1) * size.y);
+    Rect::from_two_pos(anchor, corner)
+}
 
 fn handle_pos(r: Rect, (hx, hy): (i8, i8)) -> Pos2 {
     let x = match hx {
@@ -736,7 +764,7 @@ fn select_input(
     let handle_at = |p: Pos2| -> Option<(i8, i8)> {
         let a = selected.filter(|a| cx.allowed && resizable(a))?;
         let r = cx.screen_rect(a);
-        HANDLES.into_iter().find(|h| handle_pos(r, *h).distance(p) <= 7.0)
+        handles(a).find(|h| handle_pos(r, *h).distance(p) <= 7.0)
     };
     let mut consumed = false;
     if let Some(p) = pointer {
@@ -788,7 +816,7 @@ fn select_input(
             Some(Gesture::Resize { page, index, handle, from }) if page == cx.page => {
                 cv.gesture = None;
                 if let Some(a) = cx.get(index) {
-                    let r = resized(cx.screen_rect(a), handle, p - from);
+                    let r = resized_for(a, cx.screen_rect(a), handle, p - from);
                     let (u0, u1) = (cx.to_user(r.left_top()), cx.to_user(r.right_bottom()));
                     let rect = [u0[0].min(u1[0]), u0[1].min(u1[1]), u0[0].max(u1[0]), u0[1].max(u1[1])];
                     if r.width() >= 4.0 && r.height() >= 4.0 {
@@ -882,13 +910,13 @@ pub(crate) fn paint_page(ui: &egui::Ui, painter: &egui::Painter, cx: &PageCx<'_>
         if let (Some(p), Some(g)) = (pointer, &cv.gesture) {
             match g {
                 Gesture::Move { page, index: gi, from } if *page == cx.page && *gi == index => r = r.translate(p - *from),
-                Gesture::Resize { page, index: gi, handle, from } if *page == cx.page && *gi == index => r = resized(r, *handle, p - *from),
+                Gesture::Resize { page, index: gi, handle, from } if *page == cx.page && *gi == index => r = resized_for(a, r, *handle, p - *from),
                 _ => {}
             }
         }
         painter.rect_stroke(r, CornerRadius::ZERO, Stroke::new(1.0, SELECT_BLUE), egui::StrokeKind::Middle);
         if cx.allowed && resizable(a) {
-            for h in HANDLES {
+            for h in handles(a) {
                 let c = handle_pos(r, h);
                 painter.circle(c, 4.5, Color32::WHITE, Stroke::new(1.0, SELECT_BLUE));
             }

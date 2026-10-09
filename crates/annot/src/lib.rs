@@ -1353,12 +1353,25 @@ pub fn move_annotation(doc: &mut Document, page: usize, index: usize, dx: f64, d
     Ok(())
 }
 
-/// Resize a rectangle, oval or text box to `rect`; its appearance is redrawn.
+/// Resize a rectangle, oval or text box to `rect`; its appearance is redrawn. A stamp (rubber,
+/// custom picture, typed signature) only gets the new `/Rect`: viewers map its appearance's
+/// `/BBox` onto `/Rect` (§12.5.5), so the picture scales with it.
 pub fn set_rect(doc: &mut Document, page: usize, index: usize, rect: [f64; 4], meta: &Meta) -> Result<(), AnnotError> {
     let (_, r) = annot_ref(doc, page, index)?;
     unlocked(doc, r)?;
     let d = annot_dict(doc, r);
     let subtype = String::from_utf8_lossy(d.name(b"Subtype").unwrap_or_default()).into_owned();
+    if subtype == "Stamp" {
+        let [x0, y0, x1, y1] = rect;
+        if !finite(&rect) || x1 - x0 < 1.0 || y1 - y0 < 1.0 {
+            return Err(AnnotError::Invalid("invalid rectangle (too small)".into()));
+        }
+        doc.update_dict(r, |d| {
+            d.set(b"Rect".to_vec(), num_array(&rect));
+            touch(d, meta);
+        })?;
+        return Ok(());
+    }
     if !matches!(subtype.as_str(), "Square" | "Circle" | "FreeText") {
         return Err(AnnotError::Invalid(format!("{subtype} comments can't be resized")));
     }

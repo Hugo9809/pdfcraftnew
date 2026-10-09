@@ -142,6 +142,10 @@ fn changing_saved_signatures_and_initials_preserves_placed_marks() {
     h.run_steps(2);
     assert_eq!(h.state().dialog, None, "Sign still reuses the saved signature");
     click(&mut h, 40.0, 300.0);
+    // Placing returns to the Select tool (so the signature can be moved or resized).
+    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    h.state_mut().quick_tool = QuickTool::Fill(FillTool::Signature);
+    h.run_steps(2);
     let original = format!("{:?}", h.state().session.get(h.state().views[0].id).unwrap().info.annotations);
 
     // The quick toolbar exposes replacement without changing the normal placement action.
@@ -164,6 +168,8 @@ fn changing_saved_signatures_and_initials_preserves_placed_marks() {
     assert_eq!(format!("{:?}", h.state().session.get(h.state().views[0].id).unwrap().info.annotations), original);
     click(&mut h, 40.0, 200.0);
     assert_eq!(items(&h).len(), 2);
+    h.state_mut().quick_tool = QuickTool::Fill(FillTool::Signature);
+    h.run_steps(2);
 
     h.get_by_label("Fill & Sign").click();
     h.run_steps(2);
@@ -450,4 +456,64 @@ fn placed_pictures_keep_their_aspect_ratio() {
     }
     let zero = SavedSig::Image(pdfcraft_ui_egui::fill_sign::SigImage { size: (0, 5), ..img(1, 1) });
     assert!(pdfcraft_ui_egui::fill_sign::place(0, [10.0, 100.0], &zero, false, "").is_none());
+}
+
+fn drag(h: &mut Harness<'static, PdfCraftApp>, from: Pos2, to: Pos2) {
+    h.hover_at(from);
+    h.run_steps(1);
+    h.drag_at(from);
+    h.run_steps(1);
+    for k in 1..=4 {
+        h.hover_at(from + (to - from) * (k as f32 / 4.0));
+        h.run_steps(1);
+    }
+    h.drop_at(to);
+    h.run_steps(3);
+}
+
+#[test]
+fn placed_picture_signatures_move_and_resize_keeping_their_shape() {
+    let mut h = harness();
+    assert!(h.state_mut().execute("sign.fill.signature"));
+    h.run_steps(2);
+    h.get_all_by_label("Upload").last().unwrap().click();
+    h.run_steps(1);
+    h.state_mut().use_signature_image("sig.png".into(), ink_png(300, 100));
+    h.run_steps(2);
+    h.get_by_label("Apply").click();
+    h.run_steps(3);
+
+    // Placing comes back under the Select tool with the new signature selected.
+    click(&mut h, 60.0, 100.0);
+    assert_eq!(h.state().quick_tool, QuickTool::Select);
+    let r = stamps(&h)[0];
+    assert!(h.state().views[0].comments.selected.is_some(), "the placed signature is selected");
+
+    // Drag its middle: it moves, same size.
+    let mid = at(&h, (r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0);
+    drag(&mut h, mid, mid + egui::vec2(60.0, -45.0));
+    let m = stamps(&h)[0];
+    assert_eq!(stamps(&h).len(), 1, "moved, not placed again");
+    assert!(m[0] > r[0] + 20.0 && m[1] > r[1] + 15.0, "moved right and up: {r:?} -> {m:?}");
+    assert!(((m[2] - m[0]) - (r[2] - r[0])).abs() < 0.5 && ((m[3] - m[1]) - (r[3] - r[1])).abs() < 0.5);
+
+    // Drag the bottom-right corner out (mostly sideways): it grows and keeps its 3:1 shape,
+    // with the top-left corner where it was.
+    let corner = at(&h, m[2], m[1]);
+    drag(&mut h, corner, corner + egui::vec2(90.0, 5.0));
+    let g = stamps(&h)[0];
+    let (w, ht) = (g[2] - g[0], g[3] - g[1]);
+    assert!(w > (m[2] - m[0]) * 1.3, "grew: {m:?} -> {g:?}");
+    assert!((w / ht - 3.0).abs() < 0.05, "kept 3:1: {g:?}");
+    assert!((g[0] - m[0]).abs() < 0.5 && (g[3] - m[3]).abs() < 0.5, "top-left stays: {m:?} -> {g:?}");
+
+    // And shrinks from the same corner; undo goes back one step at a time.
+    let corner = at(&h, g[2], g[1]);
+    drag(&mut h, corner, corner - egui::vec2(120.0, 0.0));
+    let s = stamps(&h)[0];
+    assert!(s[2] - s[0] < w && ((s[2] - s[0]) / (s[3] - s[1]) - 3.0).abs() < 0.05, "{s:?}");
+    assert!(h.state_mut().execute("edit.undo"));
+    h.run_steps(2);
+    let u = stamps(&h)[0];
+    assert!((u[2] - g[2]).abs() < 0.5 && (u[1] - g[1]).abs() < 0.5, "{u:?} vs {g:?}");
 }

@@ -1460,7 +1460,14 @@ pub fn document_area(app: &mut PdfCraftApp, index: usize, ui: &mut egui::Ui) {
                 && allowed
             {
                 match crate::fill_sign::page_input(ui, &resp, &xf, i, info, ft, view, signature.as_ref(), initials.as_ref(), &author, today) {
-                    Some(crate::fill_sign::FillAction::Edit(e)) => view.pending_edit = Some(*e),
+                    Some(crate::fill_sign::FillAction::Edit(e)) => {
+                        // A placed signature or initials comes back selected under the Select
+                        // tool, ready to move or resize (Acrobat does the same).
+                        if matches!(ft, crate::fill_sign::FillTool::Signature | crate::fill_sign::FillTool::Initials) {
+                            view.comments.tool_done = true;
+                        }
+                        view.pending_edit = Some(*e);
+                    }
                     Some(crate::fill_sign::FillAction::CreateSignature) => open_signature = true,
                     Some(crate::fill_sign::FillAction::CreateInitials) => open_initials = true,
                     None => {}

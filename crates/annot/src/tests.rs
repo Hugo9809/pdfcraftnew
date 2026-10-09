@@ -447,6 +447,17 @@ fn stamps_draw_their_label_and_by_line() {
     )
     .unwrap();
     assert!(ap_content(&doc, &list(&doc, 0)[j]).contains("(SIGN HERE) Tj"));
+    // Stamps resize by their /Rect alone (the appearance's /BBox maps onto it), and keep it.
+    let ap_before = list(&doc, 0)[j].get(b"AP").cloned();
+    set_rect(&mut doc, 0, j, [50.0, 280.0, 290.0, 340.0], &meta("")).unwrap();
+    let doc2 = reopen(&doc);
+    let d = &list(&doc2, 0)[j];
+    let rect: Vec<f64> = d.get(b"Rect").and_then(|o| o.as_array()).unwrap().iter().filter_map(|v| v.as_f64()).collect();
+    assert_eq!(rect, [50.0, 280.0, 290.0, 340.0]);
+    assert_eq!(list(&doc, 0)[j].get(b"AP").cloned(), ap_before, "the appearance is untouched");
+    for bad in [[0.0, 0.0, 0.5, 10.0], [0.0, 0.0, 10.0, f64::NAN], [10.0, 10.0, 0.0, 0.0]] {
+        assert!(matches!(set_rect(&mut doc, 0, j, bad, &meta("")), Err(AnnotError::Invalid(_))), "{bad:?}");
+    }
     assert_eq!(StampKind::from_name(b"Approved"), Some(StampKind::Approved), "standard names");
     assert!(StampKind::ALL.iter().all(|k| k.size().0 >= 80.0));
 }
